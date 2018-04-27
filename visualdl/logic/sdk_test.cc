@@ -28,6 +28,7 @@ TEST(Scalar, write) {
   auto tablet = writer.AddTablet("scalar0");
   components::Scalar<int> scalar(tablet);
   scalar.AddRecord(0, 12);
+  scalar.AddRecord(1, 13);
   auto tablet1 = writer.AddTablet("model/layer/min");
   components::Scalar<float> scalar1(tablet1);
   scalar1.SetCaption("customized caption");
@@ -37,11 +38,13 @@ TEST(Scalar, write) {
   auto reader = reader_.AsMode("train");
   auto tablet_reader = reader.tablet("scalar0");
   auto scalar_reader = components::ScalarReader<int>(std::move(tablet_reader));
-  auto captioin = scalar_reader.caption();
-  ASSERT_EQ(captioin, "train");
-  ASSERT_EQ(scalar_reader.total_records(), 1);
+  auto caption = scalar_reader.caption();
+  ASSERT_EQ(caption, "train");
+  // reference PR#225
+  ASSERT_EQ(scalar_reader.total_records(), 2);
   auto record = scalar_reader.records();
-  ASSERT_EQ(record.size(), 1);
+  // reference PR#225
+  ASSERT_EQ(record.size(), 2);
   // check the first entry of first record
   ASSERT_EQ(record.front(), 12);
 
@@ -53,9 +56,6 @@ TEST(Scalar, write) {
   ASSERT_EQ(tags.size(), 2);
   ASSERT_EQ(tags.front(), "scalar0");
   ASSERT_EQ(tags[1], "model/layer/min");
-  components::ScalarReader<float> scalar_reader1(
-      reader.tablet("model/layer/min"));
-  ASSERT_EQ(scalar_reader1.caption(), "customized caption");
 }
 
 TEST(Image, test) {
@@ -77,7 +77,7 @@ TEST(Image, test) {
       for (int j = 0; j < 3 * 5 * 5; j++) {
         data.push_back(float(rand()) / RAND_MAX);
       }
-      int index = image.IsSampleTaken();
+      int index = image.IndexOfSampleTaken();
       if (index != -1) {
         image.SetSample(index, shape, data);
       }
@@ -127,6 +127,75 @@ TEST(Image, add_sample_test) {
   components::ImageReader image2read("train", tablet2read);
   CHECK_EQ(image2read.caption(), "this is an image");
   CHECK_EQ(image2read.num_records(), num_steps);
+}
+
+TEST(Audio, test) {
+  const auto dir = "./tmp/sdk_test.audio";
+  LogWriter writer__(dir, 4);
+  auto writer = writer__.AsMode("train");
+
+  auto tablet = writer.AddTablet("audio0");
+  components::Audio audio(tablet, 3, 1);
+  const int num_steps = 10;
+
+  LOG(INFO) << "write audio";
+  audio.SetCaption("this is an audio");
+  for (int step = 0; step < num_steps; step++) {
+    audio.StartSampling();
+    for (int i = 0; i < 7; i++) {
+      vector<int32_t> shape({16000, 2, 2});
+      vector<uint8_t> data;
+      for (int j = 0; j < 16000 * 2 * 2; j++) {
+        data.push_back(rand() % 256);
+      }
+      int index = audio.IndexOfSampleTaken();
+      if (index != -1) {
+        audio.SetSample(index, shape, data);
+      }
+    }
+    audio.FinishSampling();
+  }
+
+  LOG(INFO) << "read audio";
+  // read it
+  LogReader reader__(dir);
+  auto reader = reader__.AsMode("train");
+  auto tablet2read = reader.tablet("audio0");
+  components::AudioReader audio2read("train", tablet2read);
+  CHECK_EQ(audio2read.caption(), "this is an audio");
+  CHECK_EQ(audio2read.num_records(), num_steps);
+}
+
+TEST(Audio, add_sample_test) {
+  const auto dir = "./tmp/sdk_test.audio";
+  LogWriter writer__(dir, 4);
+  auto writer = writer__.AsMode("train");
+
+  auto tablet = writer.AddTablet("audio0");
+  components::Audio audio(tablet, 3, 1);
+  const int num_steps = 10;
+
+  LOG(INFO) << "write audio";
+  audio.SetCaption("this is an audio");
+  for (int step = 0; step < num_steps; step++) {
+    audio.StartSampling();
+    for (int i = 0; i < 7; i++) {
+      vector<uint8_t> data;
+      for (int j = 0; j < 16000 * 2 * 2; j++) {
+        data.push_back(rand() % 256);
+      }
+    }
+    audio.FinishSampling();
+  }
+
+  LOG(INFO) << "read audio";
+  // read it
+  LogReader reader__(dir);
+  auto reader = reader__.AsMode("train");
+  auto tablet2read = reader.tablet("audio0");
+  components::AudioReader audio2read("train", tablet2read);
+  CHECK_EQ(audio2read.caption(), "this is an audio");
+  CHECK_EQ(audio2read.num_records(), num_steps);
 }
 
 TEST(Histogram, AddRecord) {

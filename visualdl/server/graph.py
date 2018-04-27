@@ -1,16 +1,31 @@
+# Copyright (c) 2017 VisualDL Authors. All Rights Reserve.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =======================================================================
+
+from __future__ import absolute_import
 import json
 import os
 
 from google.protobuf.json_format import MessageToJson
-from PIL import Image
 
-import graphviz_graph as gg
-import onnx
+from . import graphviz_graph as gg
+from . import onnx
 
 
 def debug_print(json_obj):
-    print(json.dumps(
-        json_obj, sort_keys=True, indent=4, separators=(',', ': ')))
+    print(
+        json.dumps(json_obj, sort_keys=True, indent=4, separators=(',', ': ')))
 
 
 def reorganize_inout(json_obj, key):
@@ -54,8 +69,8 @@ def rename_model(model_json):
         for variable in variables:
             old_name = variable['name']
             new_shape = [int(dim) for dim in variable['shape']]
-            new_name = old_name + '\ndata_type=' + str(variable['data_type']) \
-                       + '\nshape=' + str(new_shape)
+            new_name = old_name + '\ndata_type=' + str(
+                variable['data_type']) + '\nshape=' + str(new_shape)
             variable['name'] = new_name
             rename_edge(model, old_name, new_name)
 
@@ -234,8 +249,8 @@ def get_level_to_all(node_links, model_json):
                 if out_level not in output_to_level:
                     output_to_level[out_idx] = out_level
                 else:
-                    raise Exception(
-                        "output " + out_name + "have multiple source")
+                    raise Exception("output " + out_name +
+                                    "have multiple source")
     level_to_outputs = dict()
     for out_idx in output_to_level:
         level = output_to_level[out_idx]
@@ -312,21 +327,27 @@ def add_edges(json_obj):
         cur_node = json_obj['node'][node_index]
 
         # input edges
-        for source in cur_node['input']:
+        if 'input' in cur_node and len(cur_node['input']) > 0:
+            for source in cur_node['input']:
+                json_obj['edges'].append({
+                    'source':
+                    source,
+                    'target':
+                    'node_' + str(node_index),
+                    'label':
+                    'label_' + str(label_incrementer)
+                })
+                label_incrementer += 1
+
+        # output edge
+        if 'output' in cur_node and len(cur_node['output']) > 0:
             json_obj['edges'].append({
-                'source': source,
-                'target': 'node_' + str(node_index),
+                'source': 'node_' + str(node_index),
+                'target': cur_node['output'][0],
                 'label': 'label_' + str(label_incrementer)
             })
             label_incrementer += 1
 
-        # output edge
-        json_obj['edges'].append({
-            'source': 'node_' + str(node_index),
-            'target': cur_node['output'][0],
-            'label': 'label_' + str(label_incrementer)
-        })
-        label_incrementer += 1
     return json_obj
 
 
@@ -353,6 +374,7 @@ class GraphPreviewGenerator(object):
     '''
     Generate a graph image for ONNX proto.
     '''
+
     def __init__(self, model_json):
         self.model = model_json
         # init graphviz graph
@@ -360,8 +382,7 @@ class GraphPreviewGenerator(object):
             self.model['name'],
             layout="dot",
             concentrate="true",
-            rankdir="TB",
-        )
+            rankdir="TB", )
 
         self.op_rank = self.graph.rank_group('same', 2)
         self.param_rank = self.graph.rank_group('same', 1)
@@ -396,10 +417,9 @@ class GraphPreviewGenerator(object):
                 self.args.add(target)
 
             if source in self.args or target in self.args:
-                edge = self.add_edge(
-                    style="dashed,bold", color="#aaaaaa", **item)
+                self.add_edge(style="dashed,bold", color="#aaaaaa", **item)
             else:
-                edge = self.add_edge(style="bold", color="#aaaaaa", **item)
+                self.add_edge(style="bold", color="#aaaaaa", **item)
 
         if not show:
             self.graph.display(path)
@@ -448,8 +468,7 @@ class GraphPreviewGenerator(object):
             fontname="Arial",
             fontcolor="#ffffff",
             width="1.3",
-            height="0.84",
-        )
+            height="0.84", )
 
     def add_arg(self, name):
         return self.graph.node(
@@ -469,31 +488,14 @@ class GraphPreviewGenerator(object):
 
 def draw_graph(model_pb_path, image_dir):
     json_str = load_model(model_pb_path)
-    best_image = None
-    min_width = None
-    for i in range(10):
-        # randomly generate dot images and select the one with minimum width.
-        g = GraphPreviewGenerator(json_str)
-        dot_path = os.path.join(image_dir, "temp-%d.dot" % i)
-        image_path = os.path.join(image_dir, "temp-%d.jpg" % i)
-        g(dot_path)
-
-        try:
-            im = Image.open(image_path)
-            if min_width is None or im.size[0] < min_width:
-                min_width = im.size
-                best_image = image_path
-        except:
-            pass
-    return best_image
+    return json_str
 
 
 if __name__ == '__main__':
-    import os
     import sys
     current_path = os.path.abspath(os.path.dirname(sys.argv[0]))
     json_str = load_model(current_path + "/mock/inception_v1_model.pb")
-    #json_str = load_model(current_path + "/mock/squeezenet_model.pb")
+    # json_str = load_model(current_path + "/mock/squeezenet_model.pb")
     # json_str = load_model('./mock/shufflenet/model.pb')
     debug_print(json_str)
     assert json_str
