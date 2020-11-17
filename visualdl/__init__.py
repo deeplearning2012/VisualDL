@@ -17,6 +17,11 @@ from __future__ import absolute_import
 
 import os
 
-from .python.storage import *  # noqa: F401,F403
+from visualdl.writer.writer import LogWriter  # noqa
+from visualdl.reader.reader import LogReader
+from visualdl.version import vdl_version as __version__
+from visualdl.utils.dir import init_vdl_config
+
+init_vdl_config()
 
 ROOT = os.path.dirname(__file__)

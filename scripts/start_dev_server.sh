@@ -1,24 +1,61 @@
 #!/bin/bash
-set -ex
+set -e
+
+ORIGINAL_ARGS="$@"
+
+ARGS=`getopt --long host:,port: -n 'start_dev_server.sh' -- "$@"`
+
+if [ $? != 0 ]; then
+    echo "Get arguments failed!" >&2
+    cd $CWD
+    exit 1
+fi
+
+PORT=8040
+HOST="localhost"
+
+eval set -- "$ARGS"
+
+while true
+do
+    case "$1" in
+        --host)
+            HOST="$2"
+            shift 2
+            ;;
+        --port)
+            PORT="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 CURRENT_DIR=`pwd`
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-cd $SCRIPT_DIR/../frontend
 export PYTHONPATH=$PYTHONPATH:"$SCRIPT_DIR/.."
 
-./node_modules/.bin/webpack --watch --config tool/webpack.dev.config.js --output-path=../visualdl/server/dist &
-# Track webpack pid
-WEBPACKPID=$!
+FRONTEND_PORT=8999
+VDL_BIN="./build/node_modules/.bin/visualdl"
+$VDL_BIN start --port=$FRONTEND_PORT --host=$HOST --backend="http://$HOST:$PORT"
 
 function finish {
-    kill -9 $WEBPACKPID
+    $VDL_BIN stop
 }
 
 trap finish EXIT HUP INT QUIT PIPE TERM
 
 cd $CURRENT_DIR
 
-#Run the visualDL with local PATH
-python ${SCRIPT_DIR}/../visualdl/server/visualDL "$@"
+echo "Development server ready on http://$HOST:$FRONTEND_PORT"
+
+# Run the visualDL with local PATH
+python ${SCRIPT_DIR}/../visualdl/server/app.py "$ORIGINAL_ARGS"

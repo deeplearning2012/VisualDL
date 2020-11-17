@@ -1,81 +1,47 @@
 #!/bin/bash
-set -ex
-
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd $SCRIPT_DIR/..
+set -e
 
 TOP_DIR=$(pwd)
-FRONTEND_DIR=$TOP_DIR/frontend
-BACKEND_DIR=$TOP_DIR/visualdl
-BUILD_DIR=$TOP_DIR/build
-
-mkdir -p $BUILD_DIR
-
-check_duplicated() {
-    filename_format=$1
-    file_num=`ls dist/${filename_format} | wc -l | awk '{$1=$1;print}'`
-    if [ "$file_num" != "1" ]; then
-      echo "dist have duplicate file for $file_num, please clean and rerun"
-      exit 1
-    fi
-}
+FRONTEND_DIR=${TOP_DIR}/frontend
+BUILD_DIR=${TOP_DIR}/build
+FRONTEND_DIST="$BUILD_DIR/package/dist"
 
 build_frontend() {
-    cd $FRONTEND_DIR
-    if [ ! -d "dist" ]; then
-      npm install
-      npm run build
-    fi
-    for file_name in "manifest.*.js" "index.*.js" "vendor.*.js"; do
-        echo $file_name
-        check_duplicated $file_name
-    done
-}
+    rm -rf "$FRONTEND_DIST"
+    mkdir -p "$FRONTEND_DIST"
 
-build_frontend_fake() {
-    cd $FRONTEND_DIR
-    mkdir -p dist
-}
+    cd "$FRONTEND_DIR"
+    . ./scripts/install.sh
+    SCOPE="serverless" \
+      PUBLIC_PATH="{{PUBLIC_PATH}}" \
+      BASE_URI="{{BASE_URI}}" \
+      API_URL="{{API_URL}}" \
+      API_TOKEN_KEY="{{API_TOKEN_KEY}}" \
+      TELEMETRY_ID="{{TELEMETRY_ID}}" \
+      THEME="{{THEME}}" \
+      PATH="$PATH" \
+      ./scripts/build.sh
 
-build_backend() {
-    cd $BUILD_DIR
-    if [[ $WITH_PYTHON3 ]]; then
-        cmake -DWITH_PYTHON3=ON .. ${PYTHON_FLAGS}
-    else
-        cmake .. ${PYTHON_FLAGS}
-    fi
-    make -j2
-}
-
-build_onnx_graph() {
-    export PATH="$BUILD_DIR/third_party/protobuf/src/extern_protobuf-build/:$PATH"
-    cd $TOP_DIR/visualdl/server/onnx
-    protoc onnx.proto --python_out .
+    # extract
+    tar zxf "$FRONTEND_DIR/output/serverless.tar.gz" -C "$FRONTEND_DIST"
 }
 
 clean_env() {
-    rm -rf $TOP_DIR/visualdl/server/dist
-    rm -rf $BUILD_DIR/bdist*
-    rm -rf $BUILD_DIR/lib*
-    rm -rf $BUILD_DIR/temp*
-    rm -rf $BUILD_DIR/scripts*
+    rm -rf "$TOP_DIR/visualdl/server/dist"
+    rm -rf "$BUILD_DIR"
+    rm -rf "$TOP_DIR/*.egg-info"
 }
 
 package() {
-    cp -rf $FRONTEND_DIR/dist $TOP_DIR/visualdl/server/
+    cp -rf "$BUILD_DIR/package/dist" "$TOP_DIR/visualdl/server/"
 }
 
-ARG=$1
-echo "ARG: " $ARG
+clean_env
 
+mkdir -p "$BUILD_DIR"
 
-if [ "$ARG" = "travis-CI" ]; then
-    build_frontend_fake
-else
+if [ -z "$USE_CACHED_FRONTEND" ] || [ ! -d "$FRONTEND_DIST" ]; then
     build_frontend
 fi
 
-clean_env
-build_backend
-build_onnx_graph
 package
